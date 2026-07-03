@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Daily Factory</title>
+<style>
+  :root {
+    --bg: #0e0f12; --panel: #17181d; --panel2: #1e2027; --line: #2a2d36;
+    --text: #e8e9ec; --muted: #9aa0ab; --accent: #f5b942; --accent2: #7aa2f7;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 16px/1.65 -apple-system, "Segoe UI", Roboto, "Hiragino Sans", sans-serif; }
+  a { color: var(--accent2); text-decoration: none; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 24px 18px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { font-weight: 800; font-size: 20px; letter-spacing: .3px; }
+  .brand .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-right: 9px; }
+  .brand small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+  button { cursor: pointer; border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 10px; padding: 8px 14px; font-size: 14px; }
+  button.primary { background: var(--accent); color: #14150f; border: none; font-weight: 700; }
+  button:disabled { opacity: .45; cursor: default; }
+  .hidden { display: none !important; }
+  /* landing */
+  #landing { text-align: center; padding: 90px 10px; }
+  #landing h1 { font-size: 34px; margin-bottom: 14px; }
+  #landing p { color: var(--muted); max-width: 480px; margin: 0 auto 30px; }
+  /* onboarding chat */
+  #chat-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; height: 60vh; overflow-y: auto; }
+  .msg { max-width: 85%; margin-bottom: 14px; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; font-size: 15px; }
+  .msg.user { background: var(--accent2); color: #0d1117; margin-left: auto; }
+  .msg.ai { background: var(--panel2); border: 1px solid var(--line); }
+  .msg.sys { background: none; color: var(--muted); font-size: 13px; text-align: center; max-width: 100%; }
+  #chat-input-row { display: flex; gap: 10px; margin-top: 12px; }
+  #chat-input { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; color: var(--text); padding: 11px 14px; font-size: 15px; resize: none; height: 52px; font-family: inherit; }
+  /* feed */
+  .datebar { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 20px; padding-bottom: 4px; }
+  .datebar button.active { border-color: var(--accent); color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 22px; }
+  .card img { width: 100%; height: 220px; object-fit: cover; display: block; background: var(--panel2); }
+  .card .body { padding: 18px 20px 20px; }
+  .card h2 { font-size: 19px; line-height: 1.4; margin-bottom: 6px; }
+  .card .src { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+  .card .summary { font-size: 15px; color: #cfd3da; margin-bottom: 14px; }
+  .card .why { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--panel2); border-radius: 0 8px 8px 0; font-size: 14px; margin-bottom: 14px; }
+  .card .why b { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; display: block; margin-bottom: 3px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 4px; }
+  .chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; }
+  .cardfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+  .save-btn.saved { color: var(--accent); border-color: var(--accent); }
+  .empty { text-align: center; color: var(--muted); padding: 70px 20px; background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius); }
+  .profile-pill { font-size: 12.5px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 20px; }
+  .profile-pill b { color: var(--text); }
+  nav.tabs { display: flex; gap: 10px; margin-bottom: 18px; }
+  nav.tabs button.active { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span>The Daily Factory<small>your field, distilled to 3 essays a day</small></div>
+    <div id="auth-area"></div>
+  </header>
+
+  <div id="landing">
+    <h1>A daily made only for you.</h1>
+    <p>Sign in, talk to the interviewer about what you actually care about, and every morning The Daily Factory delivers exactly 3 essay-grade reads curated to your interest profile. Members only — your daily is visible to you alone.</p>
+    <button class="primary" id="signin-btn">Sign in with Google</button>
+  </div>
+
+  <div id="onboarding" class="hidden">
+    <div class="profile-pill">🎙️ Onboarding interview — tell the interviewer your field. Together you'll settle on <b>5–10 key ideas</b> that will drive your daily. (日本語でOK)</div>
+    <div id="chat-box"></div>
+    <div id="chat-input-row">
+      <textarea id="chat-input" placeholder="e.g. 都市デザインを勉強しています / I build apps with LLMs…"></textarea>
+      <button class="primary" id="chat-send">Send</button>
+    </div>
+  </div>
+
+  <div id="feed" class="hidden">
+    <div class="profile-pill" id="profile-pill"></div>
+    <nav class="tabs">
+      <button id="tab-daily" class="active">Daily</button>
+      <button id="tab-saved">Saved</button>
+      <button id="redo-btn" title="Redo the interview">Re-tune profile</button>
+    </nav>
+    <div id="daily-view">
+      <div class="datebar" id="datebar"></div>
+      <div id="cards"></div>
+    </div>
+    <div id="saved-view" class="hidden"><div id="saved-cards"></div></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://xqxfyemszxpliffvjvvs.supabase.co";
+const SUPABASE_ANON = "sb_publishable_koNhkPcx89at7apAKsk9EA_hyLvg6aT";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const $ = (id) => document.getElementById(id);
+let session = null, profile = null, dailies = [], savedUrls = new Set(), activeDate = null;
+
+function show(view) {
+  for (const v of ["landing", "onboarding", "feed"]) $(v).classList.toggle("hidden", v !== view);
+}
+
+// ---------- auth ----------
+$("signin-btn").onclick = () =>
+  sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
+
+async function renderAuth() {
+  $("auth-area").innerHTML = session
+    ? `<button id="signout-btn">Sign out</button>`
+    : "";
+  if (session) $("signout-btn").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+}
+
+async function boot() {
+  const { data } = await sb.auth.getSession();
+  session = data.session;
+  await renderAuth();
+  if (!session) { show("landing"); return; }
+  const { data: prof } = await sb.from("df_profiles").select("*").maybeSingle();
+  profile = prof;
+  if (!profile) { startOnboarding(); return; }
+  await loadFeed();
+}
+sb.auth.onAuthStateChange((_e, s) => { if (!!s !== !!session) { session = s; boot(); } });
+
+// ---------- onboarding ----------
+let chat = [];
+function addMsg(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  $("chat-box").appendChild(div);
+  $("chat-box").scrollTop = $("chat-box").scrollHeight;
+}
+function startOnboarding() {
+  show("onboarding");
+  chat = [];
+  $("chat-box").innerHTML = "";
+  addMsg("ai", "Welcome to The Daily Factory. I'm your onboarding interviewer.\n\nWhat field do you want your daily built around — and what are you doing in it right now? (日本語でも大丈夫です)");
+}
+async function sendChat() {
+  const text = $("chat-input").value.trim();
+  if (!text) return;
+  $("chat-input").value = "";
+  addMsg("user", text);
+  chat.push({ role: "user", content: text });
+  $("chat-send").disabled = true;
+  addMsg("sys", "…thinking…");
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/df-onboard`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON,
+        "Authorization": `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ messages: chat }),
+    });
+    const data = await r.json();
+    document.querySelector(".msg.sys:last-child")?.remove();
+    if (data.error) { addMsg("sys", "error: " + data.error); return; }
+    if (data.reply) { addMsg("ai", data.reply); chat.push({ role: "assistant", content: data.reply }); }
+    if (data.done) {
+      profile = data.profile;
+      addMsg("sys", `✅ Profile saved — ${data.profile.key_ideas.length} key ideas, ${data.profile.feeds.length} live feeds. Your first daily arrives tomorrow at 5am (Melbourne).`);
+      setTimeout(loadFeed, 2500);
+    }
+  } catch (e) {
+    document.querySelector(".msg.sys:last-child")?.remove();
+    addMsg("sys", "network error: " + e);
+  } finally {
+    $("chat-send").disabled = false;
+  }
+}
+$("chat-send").onclick = sendChat;
+$("chat-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ---------- feed ----------
+async function loadFeed() {
+  show("feed");
+  const ideas = (profile.key_ideas || []).slice(0, 4).join(" · ");
+  $("profile-pill").innerHTML = `<b>${escapeHtml(profile.field || "your field")}</b> — ${escapeHtml(ideas)}${(profile.key_ideas || []).length > 4 ? " …" : ""}`;
+  const [{ data: rows }, { data: saved }] = await Promise.all([
+    sb.from("df_dailies").select("date, articles").order("date", { ascending: false }).limit(14),
+    sb.from("df_saved").select("article_url"),
+  ]);
+  dailies = rows || [];
+  savedUrls = new Set((saved || []).map((s) => s.article_url));
+  renderDatebar();
+  renderCards();
+}
+function renderDatebar() {
+  const bar = $("datebar");
+  bar.innerHTML = "";
+  if (!dailies.length) return;
+  activeDate = activeDate && dailies.some((d) => d.date === activeDate) ? activeDate : dailies[0].date;
+  for (const d of dailies) {
+    const b = document.createElement("button");
+    b.textContent = d.date.slice(5);
+    b.className = d.date === activeDate ? "active" : "";
+    b.onclick = () => { activeDate = d.date; renderDatebar(); renderCards(); };
+    bar.appendChild(b);
+  }
+}
+function cardHtml(a) {
+  const saved = savedUrls.has(a.url);
+  return `<div class="card">
+    <a href="${escapeAttr(a.url)}" target="_blank" rel="noopener"><img src="${escapeAttr(a.thumbnail || "")}" loading="lazy" onerror="this.style.display='none'"></a>
+    <div class="body">
+      <h2><a href="${escapeAttr(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a></h2>
+      <div class="src">${escapeHtml(a.source || "")} · ${escapeHtml(a.date || "")}</div>
+      <div class="summary">${escapeHtml(a.summary || "")}</div>
+      <div class="why"><b>Why it matters</b>${escapeHtml(a.whyItMatters || "")}</div>
+      <div class="cardfoot">
+        <div class="chips">${(a.topics || []).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
+        <button class="save-btn ${saved ? "saved" : ""}" data-url="${escapeAttr(a.url)}">${saved ? "★ Saved" : "☆ Save"}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function renderCards() {
+  const day = dailies.find((d) => d.date === activeDate);
+  $("cards").innerHTML = day
+    ? day.articles.map(cardHtml).join("")
+    : `<div class="empty">Your first daily is being prepared — it arrives tomorrow at 5am Melbourne time. ☕</div>`;
+  wireSaveButtons($("cards"));
+}
+function wireSaveButtons(root) {
+  root.querySelectorAll(".save-btn").forEach((btn) => {
+    btn.onclick = async () => {
+      const url = btn.dataset.url;
+      const article = dailies.flatMap((d) => d.articles).find((a) => a.url === url)
+        || JSON.parse(btn.dataset.article || "null");
+      if (savedUrls.has(url)) {
+        await sb.from("df_saved").delete().eq("article_url", url);
+        savedUrls.delete(url);
+      } else if (article) {
+        await sb.from("df_saved").insert({ user_id: session.user.id, article, article_url: url });
+        savedUrls.add(url);
+      }
+      renderCards();
+      if (!$("saved-view").classList.contains("hidden")) renderSaved();
+    };
+  });
+}
+async function renderSaved() {
+  const { data } = await sb.from("df_saved").select("article, article_url").order("saved_at", { ascending: false });
+  $("saved-cards").innerHTML = (data || []).length
+    ? data.map((s) => cardHtml(s.article)).join("")
+    : `<div class="empty">Nothing saved yet.</div>`;
+  $("saved-cards").querySelectorAll(".save-btn").forEach((btn, i) => {
+    btn.dataset.article = JSON.stringify((data || [])[i]?.article || null);
+  });
+  wireSaveButtons($("saved-cards"));
+}
+$("tab-daily").onclick = () => {
+  $("tab-daily").classList.add("active"); $("tab-saved").classList.remove("active");
+  $("daily-view").classList.remove("hidden"); $("saved-view").classList.add("hidden");
+};
+$("tab-saved").onclick = () => {
+  $("tab-saved").classList.add("active"); $("tab-daily").classList.remove("active");
+  $("saved-view").classList.remove("hidden"); $("daily-view").classList.add("hidden");
+  renderSaved();
+};
+$("redo-btn").onclick = () => { if (confirm("Redo the interview? Your current profile will be replaced when the new one is confirmed.")) startOnboarding(); };
+
+function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+boot();
+</script>
+</body>
+</html>
