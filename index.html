@@ -54,6 +54,24 @@
   .profile-pill b { color: var(--text); }
   nav.tabs { display: flex; gap: 10px; margin-bottom: 18px; }
   nav.tabs button.active { border-color: var(--accent); color: var(--accent); }
+  /* categories */
+  .cat-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+  .cat-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 99px; padding: 5px 12px; cursor: pointer; }
+  .cat-chip.active { border-color: var(--text); font-weight: 600; }
+  .cat-chip .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .cat-chip .edit { opacity: .45; margin-left: 2px; }
+  .cat-chip .edit:hover { opacity: 1; }
+  .cat-add { font-size: 13px; border: 1px dashed var(--line); border-radius: 99px; padding: 5px 12px; background: none; color: var(--muted); cursor: pointer; }
+  .cat-select { font-size: 12px; border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 4px 8px; background: var(--panel); color: var(--text); max-width: 150px; }
+  .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: 340px; max-width: 90vw; }
+  .modal h3 { font-size: 16px; margin-bottom: 6px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+  .modal input[type=text] { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; background: var(--panel); color: var(--text); }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .swatch.sel { border-color: var(--text); }
+  .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; gap: 8px; }
 </style>
 </head>
 <body>
@@ -90,9 +108,13 @@
       <div class="datebar" id="datebar"></div>
       <div id="cards"></div>
     </div>
-    <div id="saved-view" class="hidden"><div id="saved-cards"></div></div>
+    <div id="saved-view" class="hidden">
+      <div class="cat-bar" id="cat-bar"></div>
+      <div id="saved-cards"></div>
+    </div>
   </div>
 </div>
+<div id="cat-modal"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -102,6 +124,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const $ = (id) => document.getElementById(id);
 let session = null, profile = null, dailies = [], savedUrls = new Set(), activeDate = null;
+let categories = [], savedItems = [], savedFilter = "all";
+const PRESET_COLORS = ["#059669","#0284c7","#7c3aed","#db2777","#d97706","#dc2626","#0891b2","#65a30d","#c026d3","#6b7280"];
 
 function show(view) {
   for (const v of ["landing", "onboarding", "feed"]) $(v).classList.toggle("hidden", v !== view);
@@ -189,12 +213,15 @@ async function loadFeed() {
   show("feed");
   const ideas = (profile.key_ideas || []).slice(0, 4).join(" · ");
   $("profile-pill").innerHTML = `<b>${escapeHtml(profile.field || "your field")}</b> — ${escapeHtml(ideas)}${(profile.key_ideas || []).length > 4 ? " …" : ""}`;
-  const [{ data: rows }, { data: saved }] = await Promise.all([
-    sb.from("df_dailies").select("date, articles").order("date", { ascending: false }).limit(14),
-    sb.from("df_saved").select("article_url"),
+  const [dRes, sRes, cRes] = await Promise.all([
+    sb.from("df_dailies").select("date, articles").order("date", { ascending: false }).limit(30),
+    sb.from("df_saved").select("article, article_url, category_id").order("saved_at", { ascending: false }),
+    sb.from("df_categories").select("*").order("position"),
   ]);
-  dailies = rows || [];
-  savedUrls = new Set((saved || []).map((s) => s.article_url));
+  dailies = dRes.data || [];
+  savedItems = sRes.data || [];
+  categories = cRes.data || [];
+  savedUrls = new Set(savedItems.map((s) => s.article_url));
   renderDatebar();
   renderCards();
 }
@@ -211,8 +238,17 @@ function renderDatebar() {
     bar.appendChild(b);
   }
 }
-function cardHtml(a) {
+function catSelectHtml(url, categoryId) {
+  const cur = categories.find((c) => c.id === categoryId);
+  const opts = ['<option value="">— category —</option>']
+    .concat(categories.map((c) => `<option value="${c.id}" ${c.id === categoryId ? "selected" : ""}>${escapeHtml(c.name)}</option>`))
+    .join("");
+  const border = cur ? cur.color : "var(--line)";
+  return `<select class="cat-select" data-url="${escapeAttr(url)}" style="border-left-color:${escapeAttr(border)}">${opts}</select>`;
+}
+function cardHtml(a, savedItem) {
   const saved = savedUrls.has(a.url);
+  const catUI = savedItem ? catSelectHtml(a.url, savedItem.category_id) : "";
   return `<div class="card">
     <a href="${escapeAttr(a.url)}" target="_blank" rel="noopener"><img src="${escapeAttr(a.thumbnail || "")}" loading="lazy" onerror="this.style.display='none'"></a>
     <div class="body">
@@ -222,7 +258,10 @@ function cardHtml(a) {
       <div class="why"><b>Why it matters</b>${escapeHtml(a.whyItMatters || "")}</div>
       <div class="cardfoot">
         <div class="chips">${(a.topics || []).map((t) => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</div>
-        <button class="save-btn ${saved ? "saved" : ""}" data-url="${escapeAttr(a.url)}">${saved ? "★ Saved" : "☆ Save"}</button>
+        <div style="display:flex;gap:8px;align-items:center;flex:none">
+          ${catUI}
+          <button class="save-btn ${saved ? "saved" : ""}" data-url="${escapeAttr(a.url)}">${saved ? "★ Saved" : "☆ Save"}</button>
+        </div>
       </div>
     </div>
   </div>`;
@@ -230,7 +269,7 @@ function cardHtml(a) {
 function renderCards() {
   const day = dailies.find((d) => d.date === activeDate);
   $("cards").innerHTML = day
-    ? day.articles.map(cardHtml).join("")
+    ? day.articles.map((a) => cardHtml(a)).join("")
     : `<div class="empty">Your first daily is being prepared — it arrives tomorrow at 5am Melbourne time. ☕</div>`;
   wireSaveButtons($("cards"));
 }
@@ -239,29 +278,130 @@ function wireSaveButtons(root) {
     btn.onclick = async () => {
       const url = btn.dataset.url;
       const article = dailies.flatMap((d) => d.articles).find((a) => a.url === url)
-        || JSON.parse(btn.dataset.article || "null");
+        || savedItems.find((s) => s.article_url === url)?.article;
       if (savedUrls.has(url)) {
-        await sb.from("df_saved").delete().eq("article_url", url);
+        await sb.from("df_saved").delete().eq("article_url", url).eq("user_id", session.user.id);
         savedUrls.delete(url);
+        savedItems = savedItems.filter((s) => s.article_url !== url);
       } else if (article) {
-        await sb.from("df_saved").insert({ user_id: session.user.id, article, article_url: url });
+        const { data } = await sb.from("df_saved")
+          .insert({ user_id: session.user.id, article, article_url: url })
+          .select("article, article_url, category_id").single();
         savedUrls.add(url);
+        if (data) savedItems.unshift(data);
       }
       renderCards();
       if (!$("saved-view").classList.contains("hidden")) renderSaved();
     };
   });
 }
-async function renderSaved() {
-  const { data } = await sb.from("df_saved").select("article, article_url").order("saved_at", { ascending: false });
-  $("saved-cards").innerHTML = (data || []).length
-    ? data.map((s) => cardHtml(s.article)).join("")
-    : `<div class="empty">Nothing saved yet.</div>`;
-  $("saved-cards").querySelectorAll(".save-btn").forEach((btn, i) => {
-    btn.dataset.article = JSON.stringify((data || [])[i]?.article || null);
-  });
-  wireSaveButtons($("saved-cards"));
+// ---------- categories ----------
+function catCounts() {
+  const m = { all: savedItems.length, none: 0 };
+  for (const c of categories) m[c.id] = 0;
+  for (const s of savedItems) { if (s.category_id) m[s.category_id] = (m[s.category_id] || 0) + 1; else m.none++; }
+  return m;
 }
+function renderCatBar() {
+  const m = catCounts();
+  const chip = (key, label, color, count, editable) =>
+    `<button class="cat-chip ${String(savedFilter) === String(key) ? "active" : ""}" data-filter="${key}">
+       ${color ? `<span class="dot" style="background:${escapeAttr(color)}"></span>` : ""}${escapeHtml(label)}
+       <span style="color:var(--muted)">${count}</span>
+       ${editable ? `<span class="edit" data-edit="${key}">✎</span>` : ""}
+     </button>`;
+  let html = chip("all", "All", "", m.all, false);
+  for (const c of categories) html += chip(c.id, c.name, c.color, m[c.id] || 0, true);
+  html += chip("none", "Uncategorized", "", m.none, false);
+  html += `<button class="cat-add" id="cat-add">+ New category</button>`;
+  const bar = $("cat-bar");
+  bar.innerHTML = html;
+  bar.querySelectorAll(".cat-chip").forEach((el) => {
+    el.onclick = (e) => {
+      const ed = e.target.dataset.edit;
+      if (ed) { openCatModal(Number(ed)); return; }
+      const f = el.dataset.filter;
+      savedFilter = (f === "all" || f === "none") ? f : Number(f);
+      renderSaved();
+    };
+  });
+  $("cat-add").onclick = () => openCatModal(null);
+}
+function renderSaved() {
+  renderCatBar();
+  let items = savedItems.slice();
+  if (savedFilter === "none") items = items.filter((s) => !s.category_id);
+  else if (savedFilter !== "all") items = items.filter((s) => s.category_id === savedFilter);
+  $("saved-cards").innerHTML = items.length
+    ? items.map((s) => cardHtml(s.article, s)).join("")
+    : `<div class="empty">${savedItems.length ? "No saved articles in this category." : "Nothing saved yet."}</div>`;
+  wireSaveButtons($("saved-cards"));
+  $("saved-cards").querySelectorAll(".cat-select").forEach((sel) => {
+    sel.onchange = async () => {
+      const url = sel.dataset.url;
+      const cid = sel.value ? Number(sel.value) : null;
+      await sb.from("df_saved").update({ category_id: cid }).eq("article_url", url).eq("user_id", session.user.id);
+      const it = savedItems.find((s) => s.article_url === url);
+      if (it) it.category_id = cid;
+      renderSaved();
+    };
+  });
+}
+function openCatModal(id) {
+  const editing = id != null ? categories.find((c) => c.id === id) : null;
+  let color = editing ? editing.color : PRESET_COLORS[0];
+  const swatches = PRESET_COLORS.map((c) => `<span class="swatch ${c === color ? "sel" : ""}" data-c="${c}" style="background:${c}"></span>`).join("");
+  $("cat-modal").innerHTML = `
+    <div class="modal-back"><div class="modal">
+      <h3>${editing ? "Edit category" : "New category"}</h3>
+      <label>Name</label>
+      <input type="text" id="cat-name" value="${escapeAttr(editing ? editing.name : "")}" placeholder="e.g. Melbourne / To read / Precedents" autofocus>
+      <label>Color</label>
+      <div class="swatches" id="cat-swatches">${swatches}</div>
+      <input type="color" id="cat-color" value="${color}" style="margin-top:10px;width:48px;height:32px;border:none;background:none;cursor:pointer">
+      <div class="modal-actions">
+        ${editing ? '<button id="cat-del" style="color:#dc2626;border-color:#dc2626">Delete</button>' : '<span></span>'}
+        <div style="display:flex;gap:8px">
+          <button id="cat-cancel">Cancel</button>
+          <button class="primary" id="cat-save">Save</button>
+        </div>
+      </div>
+    </div></div>`;
+  const setColor = (c) => {
+    color = c;
+    $("cat-color").value = c;
+    $("cat-swatches").querySelectorAll(".swatch").forEach((s) => s.classList.toggle("sel", s.dataset.c === c));
+  };
+  $("cat-swatches").querySelectorAll(".swatch").forEach((s) => (s.onclick = () => setColor(s.dataset.c)));
+  $("cat-color").oninput = (e) => { color = e.target.value; $("cat-swatches").querySelectorAll(".swatch").forEach((s) => s.classList.remove("sel")); };
+  $("cat-modal").querySelector(".modal-back").onclick = (e) => { if (e.target.classList.contains("modal-back")) closeCatModal(); };
+  $("cat-cancel").onclick = closeCatModal;
+  $("cat-save").onclick = async () => {
+    const nm = $("cat-name").value.trim();
+    if (!nm) { $("cat-name").focus(); return; }
+    if (editing) {
+      await sb.from("df_categories").update({ name: nm, color }).eq("id", editing.id);
+      Object.assign(editing, { name: nm, color });
+    } else {
+      const { data } = await sb.from("df_categories")
+        .insert({ user_id: session.user.id, name: nm, color, position: categories.length })
+        .select().single();
+      if (data) categories.push(data);
+    }
+    closeCatModal();
+    renderSaved();
+  };
+  if (editing) $("cat-del").onclick = async () => {
+    if (!confirm(`Delete category "${editing.name}"? Its saved articles become uncategorized.`)) return;
+    await sb.from("df_categories").delete().eq("id", editing.id);
+    categories = categories.filter((c) => c.id !== editing.id);
+    savedItems.forEach((s) => { if (s.category_id === editing.id) s.category_id = null; });
+    if (savedFilter === editing.id) savedFilter = "all";
+    closeCatModal();
+    renderSaved();
+  };
+}
+function closeCatModal() { $("cat-modal").innerHTML = ""; }
 $("tab-daily").onclick = () => {
   $("tab-daily").classList.add("active"); $("tab-saved").classList.remove("active");
   $("daily-view").classList.remove("hidden"); $("saved-view").classList.add("hidden");
