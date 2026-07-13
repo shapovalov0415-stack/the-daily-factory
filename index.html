@@ -238,17 +238,19 @@ function renderDatebar() {
     bar.appendChild(b);
   }
 }
-function catSelectHtml(url, categoryId) {
+function catSelectHtml(url, categoryId, isSaved) {
   const cur = categories.find((c) => c.id === categoryId);
-  const opts = ['<option value="">— category —</option>']
+  const placeholder = isSaved ? "— category —" : "＋ tag & save…";
+  const opts = [`<option value="">${placeholder}</option>`]
     .concat(categories.map((c) => `<option value="${c.id}" ${c.id === categoryId ? "selected" : ""}>${escapeHtml(c.name)}</option>`))
     .join("");
   const border = cur ? cur.color : "var(--line)";
   return `<select class="cat-select" data-url="${escapeAttr(url)}" style="border-left-color:${escapeAttr(border)}">${opts}</select>`;
 }
-function cardHtml(a, savedItem) {
+function cardHtml(a) {
   const saved = savedUrls.has(a.url);
-  const catUI = savedItem ? catSelectHtml(a.url, savedItem.category_id) : "";
+  const savedItem = savedItems.find((s) => s.article_url === a.url);
+  const catUI = categories.length ? catSelectHtml(a.url, savedItem ? savedItem.category_id : null, saved) : "";
   return `<div class="card">
     <a href="${escapeAttr(a.url)}" target="_blank" rel="noopener"><img src="${escapeAttr(a.thumbnail || "")}" loading="lazy" onerror="this.style.display='none'"></a>
     <div class="body">
@@ -271,7 +273,7 @@ function renderCards() {
   $("cards").innerHTML = day
     ? day.articles.map((a) => cardHtml(a)).join("")
     : `<div class="empty">Your first daily is being prepared — it arrives tomorrow at 5am Melbourne time. ☕</div>`;
-  wireSaveButtons($("cards"));
+  wireCards($("cards"));
 }
 function wireSaveButtons(root) {
   root.querySelectorAll(".save-btn").forEach((btn) => {
@@ -286,6 +288,35 @@ function wireSaveButtons(root) {
       } else if (article) {
         const { data } = await sb.from("df_saved")
           .insert({ user_id: session.user.id, article, article_url: url })
+          .select("article, article_url, category_id").single();
+        savedUrls.add(url);
+        if (data) savedItems.unshift(data);
+      }
+      renderCards();
+      if (!$("saved-view").classList.contains("hidden")) renderSaved();
+    };
+  });
+}
+// Wire both the ☆ Save toggle and the category/tag <select> on every card.
+// On a Daily (not-yet-saved) card, picking a tag SAVES the article into that
+// category in one action; on a saved card it reassigns (or clears) the tag.
+function wireCards(root) {
+  wireSaveButtons(root);
+  root.querySelectorAll(".cat-select").forEach((sel) => {
+    sel.onchange = async () => {
+      const url = sel.dataset.url;
+      const cid = sel.value ? Number(sel.value) : null;
+      if (savedUrls.has(url)) {
+        await sb.from("df_saved").update({ category_id: cid }).eq("article_url", url).eq("user_id", session.user.id);
+        const it = savedItems.find((s) => s.article_url === url);
+        if (it) it.category_id = cid;
+      } else {
+        if (cid === null) return; // placeholder chosen on an unsaved card — no-op
+        const article = dailies.flatMap((d) => d.articles).find((a) => a.url === url)
+          || savedItems.find((s) => s.article_url === url)?.article;
+        if (!article) return;
+        const { data } = await sb.from("df_saved")
+          .insert({ user_id: session.user.id, article, article_url: url, category_id: cid })
           .select("article, article_url, category_id").single();
         savedUrls.add(url);
         if (data) savedItems.unshift(data);
@@ -333,19 +364,9 @@ function renderSaved() {
   if (savedFilter === "none") items = items.filter((s) => !s.category_id);
   else if (savedFilter !== "all") items = items.filter((s) => s.category_id === savedFilter);
   $("saved-cards").innerHTML = items.length
-    ? items.map((s) => cardHtml(s.article, s)).join("")
+    ? items.map((s) => cardHtml(s.article)).join("")
     : `<div class="empty">${savedItems.length ? "No saved articles in this category." : "Nothing saved yet."}</div>`;
-  wireSaveButtons($("saved-cards"));
-  $("saved-cards").querySelectorAll(".cat-select").forEach((sel) => {
-    sel.onchange = async () => {
-      const url = sel.dataset.url;
-      const cid = sel.value ? Number(sel.value) : null;
-      await sb.from("df_saved").update({ category_id: cid }).eq("article_url", url).eq("user_id", session.user.id);
-      const it = savedItems.find((s) => s.article_url === url);
-      if (it) it.category_id = cid;
-      renderSaved();
-    };
-  });
+  wireCards($("saved-cards"));
 }
 function openCatModal(id) {
   const editing = id != null ? categories.find((c) => c.id === id) : null;
